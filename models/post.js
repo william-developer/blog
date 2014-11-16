@@ -1,4 +1,6 @@
-mongodb=require('./db');
+/*var mongodb = require('./db');*/
+var mongodb= require('mongodb').Db;
+var settings = require('../settings');
 markdown = require('markdown').markdown;
 function Post(name,head,title,tags,post){
 	this.name = name;
@@ -28,19 +30,19 @@ Post.prototype.save = function(callback){
 		reprint_info:{},
 		pv:0
 	}
-	mongodb.open(function(err,db){
+	mongodb.connect(settings.url,function(err,db){
 		if(err){
 			return callback(err);
 		}
 		db.collection('posts',function(err,collection){
 			if(err){
-				mongodb.close();
+				db.close();
 				return callback(err);
 			}
 			collection.insert(post,{
 				safe:true
 			},function(err){
-				mongodb.close();
+				db.close();
 				if(err){
 					return callback(err);
 				}
@@ -50,13 +52,13 @@ Post.prototype.save = function(callback){
 	});
 };
 Post.getAll = function(name,callback) {
-	mongodb.open(function (err, db) {
+	mongodb.connect(settings.url,function(err,db) {
 		if (err) {
 			return callback(err);
 		}
 		db.collection('posts', function (err, collection) {
 			if (err) {
-				mongodb.close();
+				db.close();
 				return callback(err);
 			}
 			var query = {};
@@ -66,7 +68,7 @@ Post.getAll = function(name,callback) {
 			collection.find(query).sort({
 				time: -1
 			}).toArray(function (err, docs) {
-				mongodb.close();
+				db.close();
 				if (err) {
 					return callback(err);
 				}
@@ -79,13 +81,13 @@ Post.getAll = function(name,callback) {
 	});
 };
 Post.getTen = function(name,page,callback) {
-	mongodb.open(function (err, db) {
+	mongodb.connect(settings.url,function(err,db) {
 		if (err) {
 			return callback(err);
 		}
 		db.collection('posts', function (err, collection) {
 			if (err) {
-				mongodb.close();
+				db.close();
 				return callback(err);
 			}
 			var query = {};
@@ -99,7 +101,7 @@ Post.getTen = function(name,page,callback) {
 				}).sort({
 					time: -1
 				}).toArray(function (err, docs) {
-					mongodb.close();
+					db.close();
 					if (err) {
 						return callback(err);
 					}
@@ -113,13 +115,13 @@ Post.getTen = function(name,page,callback) {
 	});
 };
 Post.getOne = function(name,day,title,callback){
-	mongodb.open(function(err,db){
+	mongodb.connect(settings.url,function(err,db){
 		if(err){
 			return callback(err);
 		}
 		db.collection('posts',function(err,collection) {
 			if (err) {
-				mongodb.close();
+				db.close();
 				return callback(err);
 			}
 			collection.findOne({
@@ -140,7 +142,7 @@ Post.getOne = function(name,day,title,callback){
 					},{
 						$inc:{"pv":1}
 					},function(err){
-						mongodb.close();
+						db.close();
 						if(err){
 							return callback(err);
 						}
@@ -156,13 +158,13 @@ Post.getOne = function(name,day,title,callback){
 	});
 };
 Post.edit=function(name,day,title,callback){
-	mongodb.open(function(err,db){
+	mongodb.connect(settings.url,function(err,db){
 		if(err){
 			return callback(err);
 		}
 		db.collection('posts',function(err,collection){
 			if(err){
-				mongodb.close();
+				db.close();
 				return callback(err);
 			}
 			collection.findOne({
@@ -170,7 +172,7 @@ Post.edit=function(name,day,title,callback){
 				"time.day":day,
 				"title":title
 			},function(err,doc){
-				mongodb.close();
+				db.close();
 				if(err){
 					return callback(err);
 				}
@@ -180,13 +182,13 @@ Post.edit=function(name,day,title,callback){
 	});
 };
 Post.update=function(name,day,title,post,callback) {
-	mongodb.open(function (err, db) {
+	mongodb.connect(settings.url,function(err,db) {
 		if (err) {
 			return callback(err);
 		}
 		db.collection('posts', function (err, collection) {
 			if (err) {
-				mongodb.close();
+				db.close();
 				return callback(err);
 			}
 			collection.update({
@@ -196,7 +198,7 @@ Post.update=function(name,day,title,post,callback) {
 			}, {
 				$set: {post: post}
 			}, function (err) {
-				mongodb.close();
+				db.close();
 				if (err) {
 					return callback(err);
 				}
@@ -206,13 +208,13 @@ Post.update=function(name,day,title,post,callback) {
 	})
 };
 Post.remove =function(name,day,title,callback){
-	mongodb.open(function(err,db){
+	mongodb.connect(settings.url,function(err,db){
 		if(err){
 			return callback(err);
 		}
 		db.collection('posts',function(err,collection){
 			if(err){
-				mongodb.close();
+				db.close();
 				return callback(err);
 			}
 			collection.findOne({
@@ -221,7 +223,7 @@ Post.remove =function(name,day,title,callback){
 				"title":title
 			},function(err,doc){
 				if(err){
-					mongodb.close();
+					db.close();
 					return callback(err);
 				}
 				var reprint_from="";
@@ -243,7 +245,7 @@ Post.remove =function(name,day,title,callback){
 						}
 					},function(err){
 						if(err){
-							mongodb.close();
+							db.close();
 							return callback(err);
 						}
 					});
@@ -256,7 +258,7 @@ Post.remove =function(name,day,title,callback){
 			},{
 				w:1
 			},function(err){
-				mongodb.close();
+				db.close();
 				if(err){
 					return callback(err);
 				}
@@ -266,13 +268,13 @@ Post.remove =function(name,day,title,callback){
 	});
 };
 Post.getArchive = function(callback){
-	mongodb.open(function(err,db){
+	mongodb.connect(settings.url,function(err,db){
 		if(err){
 			return callback;
 		}
 		db.collection('posts',function(err,collection){
 			if(err){
-				mongodb.close();
+				db.close();
 				return callback(err);
 			}
 			collection.find({},{
@@ -282,7 +284,7 @@ Post.getArchive = function(callback){
 			}).sort({
 				time:-1
 			}).toArray(function(err,docs){
-				mongodb.close();
+				db.close();
 				if(err){
 					return callback(err);
 				}
@@ -292,17 +294,17 @@ Post.getArchive = function(callback){
 	});
 };
 Post.getTags=function(callback){
-	mongodb.open(function(err,db){
+	mongodb.connect(settings.url,function(err,db){
 		if(err){
 			return callback;
 		}
 		db.collection('posts',function(err,collection){
 			if(err){
-				mongodb.close();
+				db.close();
 				return callback(err);
 			}
 			collection.distinct('tags',function(err,docs){
-				mongodb.close();
+				db.close();
 				if(err){
 					return callback(err);
 				}
@@ -312,13 +314,13 @@ Post.getTags=function(callback){
 	});
 };
 Post.getTag=function(tag,callback){
-	mongodb.open(function(err,db){
+	mongodb.connect(settings.url,function(err,db){
 		if(err){
 			return callback(err);
 		}
 		db.collection('posts',function(err,collection){
 			if(err){
-				mongodb.close();
+				db.close();
 				return callback(err);
 			}
 			collection.find({
@@ -330,7 +332,7 @@ Post.getTag=function(tag,callback){
 			}).sort({
 				time:-1
 			}).toArray(function(err,docs){
-				mongodb.close();
+				db.close();
 				if(err){
 					return callback(err);
 				}
@@ -340,7 +342,7 @@ Post.getTag=function(tag,callback){
 	});
 };
 Post.search = function(keyword,callback){
-	mongodb.open(function(err,db){
+	mongodb.connect(settings.url,function(err,db){
 		if(err){
 			return callback(err);
 		}
@@ -355,7 +357,7 @@ Post.search = function(keyword,callback){
 			}).sort({
 				time:-1
 			}).toArray(function(err,docs){
-				mongodb.close();
+				db.close();
 				if(err){
 					return callback(err);
 				}
@@ -365,13 +367,13 @@ Post.search = function(keyword,callback){
 	});
 };
 Post.reprint=function(reprint_from,reprint_to,callback){
-	mongodb.open(function(err,db){
+	mongodb.connect(settings.url,function(err,db){
 		if(err){
 			return callback(err);
 		}
 		db.collection('posts',function(err,collection){
 			if(err){
-				mongodb.close();
+				db.close();
 				return callback(err);
 			}
 			collection.findOne({
@@ -380,7 +382,7 @@ Post.reprint=function(reprint_from,reprint_to,callback){
 				"title":reprint_from.title
 			},function(err,doc){
 				if(err){
-					mongodb.close();
+					db.close();
 					return callback(err);
 				}
 				var date = new Date();
@@ -414,14 +416,14 @@ Post.reprint=function(reprint_from,reprint_to,callback){
 					}
 				},function(err){
 					if(err){
-						mongodb.close();
+						db.close();
 						return callback(err);
 					}
 				});
 				collection.insert(doc,{
 					safe:true
 				},function(err,post){
-					mongodb.close();
+					db.close();
 					if(err){
 						return callback(err);
 					}

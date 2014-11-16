@@ -1,0 +1,166 @@
+[Sun Nov 16 2014 09:27:36 GMT+0800 (中国标准时间)]/
+TypeError: Object function Db(databaseName, serverConfig, options) {
+  if(!(this instanceof Db)) return new Db(databaseName, serverConfig, options);
+  EventEmitter.call(this);
+  var self = this;
+  this.databaseName = databaseName;
+  this.serverConfig = serverConfig;
+  this.options = options == null ? {} : options;
+  // State to check against if the user force closed db
+  this._applicationClosed = false;
+  // Fetch the override flag if any
+  var overrideUsedFlag = this.options['override_used_flag'] == null ? false : this.options['override_used_flag'];
+
+  // Verify that nobody is using this config
+  if(!overrideUsedFlag && this.serverConfig != null && typeof this.serverConfig == 'object' && this.serverConfig._isUsed && this.serverConfig._isUsed()) {
+    throw new Error('A Server or ReplSet instance cannot be shared across multiple Db instances');
+  } else if(!overrideUsedFlag && typeof this.serverConfig == 'object'){
+    // Set being used
+    this.serverConfig._used = true;
+  }
+
+  // Allow slaveOk override
+  this.slaveOk = this.options['slave_ok'] == null ? false : this.options['slave_ok'];
+  this.slaveOk = this.options['slaveOk'] == null ? this.slaveOk : this.options['slaveOk'];
+
+  // Number of operations to buffer before failure
+  this.bufferMaxEntries = typeof this.options['bufferMaxEntries'] == 'number' ? this.options['bufferMaxEntries'] : -1;
+
+  // Ensure we have a valid db name
+  validateDatabaseName(databaseName);
+
+  // Contains all the connections for the db
+  try {
+    this.native_parser = this.options.native_parser;
+    // The bson lib
+    var bsonLib = this.bsonLib = this.options.native_parser ? require('bson').BSONNative : require('bson').BSONPure;
+    bsonLib = require('bson').BSONPure;
+    // Fetch the serializer object
+    var BSON = bsonLib.BSON;
+
+    // Create a new instance
+    this.bson = new BSON([bsonLib.Long, bsonLib.ObjectID, bsonLib.Binary, bsonLib.Code, bsonLib.DBRef, bsonLib.Symbol, bsonLib.Double, bsonLib.Timestamp, bsonLib.MaxKey, bsonLib.MinKey]);
+    this.bson.promoteLongs = this.options.promoteLongs == null ? true : this.options.promoteLongs;
+
+    // Backward compatibility to access types
+    this.bson_deserializer = bsonLib;
+    this.bson_serializer = bsonLib;
+
+    // Add any overrides to the serializer and deserializer
+    this.bson_deserializer.promoteLongs = this.options.promoteLongs == null ? true : this.options.promoteLongs;
+  } catch (err) {
+    // If we tried to instantiate the native driver
+    var msg = 'Native bson parser not compiled, please compile '
+            + 'or avoid using native_parser=true';
+    throw Error(msg);
+  }
+
+  // Internal state of the server
+  this._state = 'disconnected';
+
+  this.pkFactory = this.options.pkFactory == null ? bsonLib.ObjectID : this.options.pkFactory;
+  this.forceServerObjectId = this.options.forceServerObjectId != null ? this.options.forceServerObjectId : false;
+
+  // Added safe
+  this.safe = this.options.safe == null ? false : this.options.safe;
+
+  // If we have not specified a "safe mode" we just print a warning to the console
+  if(this.options.safe == null
+    && this.options.w == null
+    && this.options.j == null
+    && this.options.journal == null
+    && this.options.fsync == null) {
+    console.log("========================================================================================");
+    console.log("=  Please ensure that you set the default write concern for the database by setting    =");
+    console.log("=   one of the options                                                                 =");
+    console.log("=                                                                                      =");
+    console.log("=     w: (value of > -1 or the string 'majority'), where < 1 means                     =");
+    console.log("=        no write acknowledgement                                                       =");
+    console.log("=     journal: true/false, wait for flush to journal before acknowledgement             =");
+    console.log("=     fsync: true/false, wait for flush to file system before acknowledgement           =");
+    console.log("=                                                                                      =");
+    console.log("=  For backward compatibility safe is still supported and                              =");
+    console.log("=   allows values of [true | false | {j:true} | {w:n, wtimeout:n} | {fsync:true}]      =");
+    console.log("=   the default value is false which means the driver receives does not                =");
+    console.log("=   return the information of the success/error of the insert/update/remove            =");
+    console.log("=                                                                                      =");
+    console.log("=   ex: new Db(new Server('localhost', 27017), {safe:false})                           =");
+    console.log("=                                                                                      =");
+    console.log("=   http://www.mongodb.org/display/DOCS/getLastError+Command                           =");
+    console.log("=                                                                                      =");
+    console.log("=  The default of no acknowledgement will change in the very near future                =");
+    console.log("=                                                                                      =");
+    console.log("=  This message will disappear when the default safe is set on the driver Db           =");
+    console.log("========================================================================================");
+  }
+
+  // Internal states variables
+  this.notReplied ={};
+  this.isInitializing = true;
+  this.openCalled = false;
+
+  // Command queue, keeps a list of incoming commands that need to be executed once the connection is up
+  this.commands = [];
+
+  // Set up logger
+  this.logger = this.options.logger != null
+    && (typeof this.options.logger.debug == 'function')
+    && (typeof this.options.logger.error == 'function')
+    && (typeof this.options.logger.log == 'function')
+      ? this.options.logger : {error:function(message, object) {}, log:function(message, object) {}, debug:function(message, object) {}};
+
+  // Associate the logger with the server config
+  this.serverConfig.logger = this.logger;
+  if(this.serverConfig.strategyInstance) this.serverConfig.strategyInstance.logger = this.logger;
+  this.tag = new Date().getTime();
+  // Just keeps list of events we allow
+  this.eventHandlers = {error:[], parseError:[], poolReady:[], message:[], close:[]};
+
+  // Controls serialization options
+  this.serializeFunctions = this.options.serializeFunctions != null ? this.options.serializeFunctions : false;
+
+  // Raw mode
+  this.raw = this.options.raw != null ? this.options.raw : false;
+
+  // Record query stats
+  this.recordQueryStats = this.options.recordQueryStats != null ? this.options.recordQueryStats : false;
+
+  // If we have server stats let's make sure the driver objects have it enabled
+  if(this.recordQueryStats == true) {
+    this.serverConfig.enableRecordQueryStats(true);
+  }
+
+  // Retry information
+  this.retryMiliSeconds = this.options.retryMiliSeconds != null ? this.options.retryMiliSeconds : 1000;
+  this.numberOfRetries = this.options.numberOfRetries != null ? this.options.numberOfRetries : 60;
+
+  // Set default read preference if any
+  this.readPreference = this.options.readPreference;
+
+  // Set slaveOk if we have specified a secondary or secondary preferred readPreference
+  if(this.readPreference == ReadPreference.SECONDARY ||
+    this.readPreference == ReadPreference.SECONDARY_PREFERRED) {
+    this.slaveOk = true;
+  }
+
+  // Set read preference on serverConfig if none is set
+  // but the db one was
+  if(this.serverConfig.options.readPreference != null) {
+    this.serverConfig.setReadPreference(this.serverConfig.options.readPreference);
+  } else if(this.readPreference != null) {
+    this.serverConfig.setReadPreference(this.readPreference);
+  }
+
+  // Ensure we keep a reference to this db
+  this.serverConfig._dbStore.add(this);
+} has no method 'open'
+    at Function.Post.getTen (d:\blog\models\post.js:84:10)
+    at d:\blog\routes\index.js:78:8
+    at callbacks (d:\blog\node_modules\express\lib\router\index.js:164:37)
+    at param (d:\blog\node_modules\express\lib\router\index.js:138:11)
+    at pass (d:\blog\node_modules\express\lib\router\index.js:145:5)
+    at Router._dispatch (d:\blog\node_modules\express\lib\router\index.js:173:5)
+    at Object.router (d:\blog\node_modules\express\lib\router\index.js:33:10)
+    at next (d:\blog\node_modules\express\node_modules\connect\lib\proto.js:193:15)
+    at Object.initialize [as handle] (d:\blog\node_modules\passport\lib\middleware\initialize.js:62:5)
+    at next (d:\blog\node_modules\express\node_modules\connect\lib\proto.js:193:15)

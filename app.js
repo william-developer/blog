@@ -15,6 +15,8 @@ var fs=require('fs');
 var accessLog= fs.createWriteStream('access.log',{flags:'a'});
 var errorLog= fs.createWriteStream('error.log',{flags:'a'});
 var app = express();
+var passport =require('passport'),
+    GithubStrategy= require('passport-github').Strategy;
 
 // all environments
 app.set('port', process.env.PORT || 3000);
@@ -28,6 +30,7 @@ app.use(express.logger({stream:accessLog}));
 app.use(express.bodyParser({keepExtensions:true,uploadDir:'./public/images'}));
 app.use(express.methodOverride());
 app.use(express.cookieParser());
+/*
 app.use(express.session({
   secret:settings.cookieSecret,
   key:settings.db,
@@ -35,7 +38,13 @@ app.use(express.session({
   store:new MongoStore({
     db:settings.db
   })
+}));*/
+app.use(express.session({
+  secret:settings.cookieSecret,
+  cookie:{maxAge:1000*60*60*24*30},
+  url:settings.url
 }));
+app.use(passport.initialize());
 app.use(app.router);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(function(err,req,res,next){
@@ -43,7 +52,13 @@ app.use(function(err,req,res,next){
   errorLog.write(meta+err.stack+'\n');
   next();
 });
-
+passport.use(new GithubStrategy({
+  clientID:"c100218fa34773980251",
+  clientSecret:"39dbb58fb9f03a60fd03c3650040dcdb517cc86f",
+  callbackURL:"http://localhost:3000/login/github/callback"
+},function(accessToken,refreshToken,profile,done){
+  done(null,profile);
+}));
 // development only
 if ('development' == app.get('env')) {
   app.use(express.errorHandler());
