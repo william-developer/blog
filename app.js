@@ -55,7 +55,7 @@ app.use(function(err,req,res,next){
 passport.use(new GithubStrategy({
   clientID:"c100218fa34773980251",
   clientSecret:"39dbb58fb9f03a60fd03c3650040dcdb517cc86f",
-  callbackURL:"http://olive-blog.herokuapp.com/login/github/callback"
+  callbackURL:"http://localhost:3000/login/github/callback"
 },function(accessToken,refreshToken,profile,done){
   done(null,profile);
 }));
